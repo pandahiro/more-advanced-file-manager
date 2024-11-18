@@ -1,0 +1,8 @@
+{
+  "Pasta do servidor": "server",
+  "Lixeiro": {
+    "Intervalo de Verificação (limpeza de arquivos antigos)": "10",
+    "Idade máxima do arquivo (em minutos)": "10"
+  },
+  "Mostrar tamanho das pastas (pode causar lentidão)": false
+}
