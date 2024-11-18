@@ -19,15 +19,18 @@ const archiveUtils = require("./utils/decompress");
 const os = require("os");
 
 function getCurrentIP() {
-  const interfaces = os.networkInterfaces();
-  for (const iface in interfaces) {
-    for (const ifaceDetails of interfaces[iface]) {
-      if (ifaceDetails.family === "IPv4" && !ifaceDetails.internal) {
-        return ifaceDetails.address;
+  try {
+    const interfaces = os.networkInterfaces();
+    for (const iface in interfaces) {
+      for (const ifaceDetails of interfaces[iface]) {
+        if (ifaceDetails.family === "IPv4" && !ifaceDetails.internal) {
+          return ifaceDetails.address;
+        }
       }
     }
+  } catch (e) {
+    return "?";
   }
-  return "IP não encontrado";
 }
 
 logWithTimestamp(
@@ -60,11 +63,12 @@ logWithTimestamp("[Servidor] Criando aplicativo express...");
 
 const app = express();
 
-
 logWithTimestamp("[Servidor] Iniciando logger customizado...");
 app.use((req, res, next) => {
-  if (req.method === 'GET') {
-    console.log(`[${new Date().toLocaleString("br")}] ${req.method} ${req.originalUrl}`);
+  if (req.method === "GET") {
+    console.log(
+      `[${new Date().toLocaleString("br")}] ${req.method} ${req.originalUrl}`
+    );
   }
   next();
 });
@@ -73,7 +77,11 @@ app.use((req, res, next) => {
 app.use((req, res, next) => {
   const oldSend = res.send;
   res.send = function (body) {
-    console.log(`[${new Date().toLocaleString("br")}] ${req.method} ${req.originalUrl} finalizou - Status ${res.statusCode}`);
+    console.log(
+      `[${new Date().toLocaleString("br")}] ${req.method} ${
+        req.originalUrl
+      } finalizou - Status ${res.statusCode}`
+    );
     oldSend.call(this, body);
   };
   next();
@@ -97,7 +105,6 @@ function doError() {
 }
 const maindir = path.join(__dirname, config["Pasta do servidor"]);
 function getFullPath2(relativePath) {
-
   relativePath = relativePath
     .replaceAll(maindir, "")
     .replaceAll("/" + maindir, "")
@@ -182,10 +189,18 @@ function listFiles(mpath) {
 
       return {
         name: file.name,
-        path: filePath.split(path.sep).slice(1).join(path.sep).replace(maindir.slice(1) + "/", ""),
+        path: filePath
+          .split(path.sep)
+          .slice(1)
+          .join(path.sep)
+          .replace(maindir.slice(1) + "/", ""),
         isCompressed: false, // Pode ser calculado sob demanda
         isDir,
-        size: isDir ? (config["Mostrar tamanho das pastas (pode causar lentidão)"] ? formatSize(getFolderSize(filePath)) : "—") : `${formatSize(stats.size)}`, // Calcula tamanho apenas para arquivos
+        size: isDir
+          ? config["Mostrar tamanho das pastas (pode causar lentidão)"]
+            ? formatSize(getFolderSize(filePath))
+            : "—"
+          : `${formatSize(stats.size)}`, // Calcula tamanho apenas para arquivos
         modifiedDate: formatDate(stats.mtime),
       };
     });
@@ -218,7 +233,11 @@ app.get("/list-files", (req, res) => {
       const parentDir = arentDir.join("/");
       const phantomDir = {
         name: "..",
-        path: (parentDir.split("/").slice(1).join("/")).replace(maindir.slice("1"), ""),
+        path: parentDir
+          .split("/")
+          .slice(1)
+          .join("/")
+          .replace(maindir.slice("1"), ""),
         isCompressed: false,
         isDir: true,
         size: "Nenhum", // Tamanho fictício
@@ -668,7 +687,8 @@ setInterval(() => {
 
       if (!isNaN(timestamp)) {
         const remainingTime = now - timestamp;
-        const maxAge = config.Lixeiro["Idade máxima do arquivo (em minutos)"] * 60 * 1000;
+        const maxAge =
+          config.Lixeiro["Idade máxima do arquivo (em minutos)"] * 60 * 1000;
 
         if (remainingTime < maxAge) {
           const timeLeft = maxAge - remainingTime;
