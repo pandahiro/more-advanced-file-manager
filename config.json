@@ -1,8 +1,8 @@
 {
-  "Pasta do servidor": "~/.temp/server",
-  "Lixeiro": {
-    "Intervalo de Verificação (limpeza de arquivos antigos)": "10",
-    "Idade máxima do arquivo (em minutos)": "10"
+  "Server Folder": "./server",
+  "Trash": {
+    "Check Interval (cleanup of old files)": "10",
+    "Maximum file age (in minutes)": "10"
   },
-  "Mostrar tamanho das pastas (pode causar lentidão)": false
+  "Show folder size (may cause slowness)": false
 }
