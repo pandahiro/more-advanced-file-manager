@@ -1,103 +1,32 @@
-const path = require("path"); // Importa o módulo path para manipulação de caminhos
-
-function logWithTimestamp(...msg) {
-  const timestamp = new Date().toLocaleString("br");
-  console.log(`[${timestamp}] ${[...msg].join(" ")}`);
-}
-
-const oldRequire = require;
-require = function (...x) {
-  logWithTimestamp("[Require] Biblioteca carregada " + x);
-  return oldRequire(...x);
-};
-
+const path = require("path");
 const fs = require("fs");
 const express = require("express");
 const multer = require("multer");
 const config = require("./config.json");
 const archiveUtils = require("./utils/decompress");
-const os = require("os");
-
-function getCurrentIP() {
-  const interfaces = os.networkInterfaces();
-  for (const iface in interfaces) {
-    for (const ifaceDetails of interfaces[iface]) {
-      if (ifaceDetails.family === "IPv4" && !ifaceDetails.internal) {
-        return ifaceDetails.address;
-      }
-    }
+const os = require("os")
+function resolveUnixPath(unixPath) {
+  if (unixPath.startsWith('~')) {
+    unixPath = unixPath.replace("~", os.homedir())
   }
-  return "IP não encontrado";
+  return path.resolve(unixPath);
+}
+const maindir = resolveUnixPath(config["Pasta do servidor"]);
+
+if (!fs.existsSync(maindir)) {
+  fs.mkdirSync(maindir);
 }
 
-logWithTimestamp(
-  "[Gerenciador de Arquivos] Verificando se o diretório",
-  config["Pasta do servidor"],
-  "(no config.json) existe."
-);
-
-if (!fs.existsSync(config["Pasta do servidor"])) {
-  logWithTimestamp(
-    "[Gerenciador de Arquivos] Diretório não encontrado. Criando diretório",
-    config["Pasta do servidor"],
-    "."
-  );
-  fs.mkdirSync(config["Pasta do servidor"]);
-  logWithTimestamp(
-    "[Gerenciador de Arquivos] Diretório",
-    config["Pasta do servidor"],
-    "agora existe."
-  );
-} else {
-  logWithTimestamp(
-    "[Gerenciador de Arquivos] Diretório",
-    config["Pasta do servidor"],
-    "(no config.json) existe, prosseguindo."
-  );
+if (!fs.existsSync("temp")) {
+  fs.mkdirSync("temp");
 }
-
-logWithTimestamp("[Servidor] Criando aplicativo express...");
-
 const app = express();
-
-
-logWithTimestamp("[Servidor] Iniciando logger customizado...");
-app.use((req, res, next) => {
-  if (req.method === 'GET') {
-    console.log(`[${new Date().toLocaleString("br")}] ${req.method} ${req.originalUrl}`);
-  }
-  next();
-});
-
-// Middleware para logar quando a resposta for enviada
-app.use((req, res, next) => {
-  const oldSend = res.send;
-  res.send = function (body) {
-    console.log(`[${new Date().toLocaleString("br")}] ${req.method} ${req.originalUrl} finalizou - Status ${res.statusCode}`);
-    oldSend.call(this, body);
-  };
-  next();
-});
-logWithTimestamp("[Servidor] Configurando rota estática pública...");
 app.use(express.static("public"));
 
-logWithTimestamp("[Servidor] Configurando parser de corpo...");
 app.use(express.json());
+app.listen(3001);
 
-const ip = getCurrentIP();
-logWithTimestamp("[Servidor] Iniciando na porta 3001...");
-
-app.listen(3001, () => {
-  logWithTimestamp(`[Servidor] Iniciado na porta 3001, http://${ip}:3001`);
-});
-
-// Função para obter o caminho completo usando a config["Pasta do servidor"] como base
-function doError() {
-  throw new Error("this should not happen... hmm");
-}
-const maindir = path.join(__dirname, config["Pasta do servidor"]);
-function getFullPath2(relativePath) {
-
+function getFullPath(relativePath) {
   relativePath = relativePath
     .replaceAll(maindir, "")
     .replaceAll("/" + maindir, "")
@@ -107,18 +36,10 @@ function getFullPath2(relativePath) {
   if (!fullPath.startsWith(maindir))
     return path.join(
       maindir,
-      relativePath.includes("/") ? relativePath.split("/").pop() : doError()
+      relativePath.includes("/") ? relativePath.split("/").pop() : ""
     );
   return fullPath;
 }
-
-function getFullyPath(relativePath) {
-  getFullPath(relativePath);
-}
-function getFullPath(relativePath) {
-  return getFullPath2(relativePath);
-}
-// Rota para criar arquivo
 app.post("/create-file", (req, res) => {
   const { path: relativePath, content } = req.body;
   const fullPath = getFullPath(relativePath);
@@ -134,8 +55,6 @@ app.post("/create-file", (req, res) => {
       .json({ success: true, message: "Arquivo criado com sucesso." });
   });
 });
-
-// Rota para criar pasta
 app.post("/create-dir", (req, res) => {
   const { path: relativePath } = req.body;
   const fullPath = getFullPath(relativePath);
@@ -162,9 +81,9 @@ function getFolderSize(folderPath) {
     const stats = fs.statSync(filePath);
 
     if (stats.isDirectory()) {
-      totalSize += getFolderSize(filePath); // Recursão para subpastas
+      totalSize += getFolderSize(filePath);
     } else {
-      totalSize += stats.size; // Soma o tamanho do arquivo
+      totalSize += stats.size;
     }
   });
 
@@ -182,15 +101,21 @@ function listFiles(mpath) {
 
       return {
         name: file.name,
-        path: filePath.split(path.sep).slice(1).join(path.sep).replace(maindir.slice(1) + "/", ""),
+        path: filePath
+          .split(path.sep)
+          .slice(1)
+          .join(path.sep)
+          .replace(maindir.slice(1) + "/", ""),
         isCompressed: false, // Pode ser calculado sob demanda
         isDir,
-        size: isDir ? (config["Mostrar tamanho das pastas (pode causar lentidão)"] ? formatSize(getFolderSize(filePath)) : "—") : `${formatSize(stats.size)}`, // Calcula tamanho apenas para arquivos
+        size: isDir
+          ? config["Mostrar tamanho das pastas (pode causar lentidão)"]
+            ? formatSize(getFolderSize(filePath))
+            : "—"
+          : `${formatSize(stats.size)}`,
         modifiedDate: formatDate(stats.mtime),
       };
     });
-
-    // Ordena pastas antes dos arquivos
     filesDetails.sort((a, b) => {
       if (a.isDir && !b.isDir) return -1;
       if (!a.isDir && b.isDir) return 1;
@@ -202,29 +127,29 @@ function listFiles(mpath) {
     throw new Error(`Erro ao listar diretório: ${error.message}`);
   }
 }
-
-// Rota para listar arquivos
 app.get("/list-files", (req, res) => {
   const { path: relativePath } = req.query;
   const fullPath = getFullPath(relativePath || "");
 
   try {
     const files = listFiles(fullPath);
-
-    // Se a path relativa não estiver vazia, adiciona a pasta ".." fictícia
     if (relativePath !== "") {
       const arentDir = fullPath.split("/");
       arentDir.pop();
       const parentDir = arentDir.join("/");
       const phantomDir = {
         name: "..",
-        path: (parentDir.split("/").slice(1).join("/")).replace(maindir.slice("1"), ""),
+        path: parentDir
+          .split("/")
+          .slice(1)
+          .join("/")
+          .replace(maindir.slice("1"), ""),
         isCompressed: false,
         isDir: true,
-        size: "Nenhum", // Tamanho fictício
-        modifiedDate: "Nunca", // Data fictícia
+        size: "Nenhum",
+        modifiedDate: "Nunca",
       };
-      files.unshift(phantomDir); // Adiciona no início da lista
+      files.unshift(phantomDir)
     }
 
     res.status(200).json({ success: true, files });
@@ -235,8 +160,6 @@ app.get("/list-files", (req, res) => {
     });
   }
 });
-
-// Função para formatar o tamanho do arquivo
 function formatSize(bytes) {
   const units = ["Bytes", "KB", "MB", "GB"];
   const units2 = [0, 1, 2, 2];
@@ -247,8 +170,6 @@ function formatSize(bytes) {
   }
   return `${bytes.toFixed(units2[i])} ${units[i]}`;
 }
-
-// Função para formatar a data de modificação
 function formatDate(date) {
   const pad = (n) => n.toString().padStart(2, "0");
   return `${pad(date.getDate())}/${pad(
@@ -257,8 +178,6 @@ function formatDate(date) {
     date.getMinutes()
   )}:${pad(date.getSeconds())}`;
 }
-
-// Rota para descompactar arquivo
 app.post("/extract-file", (req, res) => {
   const { path: relativePath } = req.body;
   const fullPath = getFullPath(relativePath);
@@ -279,12 +198,11 @@ app.post("/extract-file", (req, res) => {
         .json({ success: false, message: "Erro ao descompactar arquivo." });
     });
 });
-// Rota para comprimir arquivo
 app.post("/compress-file", (req, res) => {
   const { path: relativePath } = req.body;
-  const fullPath = getFullyPath(relativePath.split("/").splice(1).join("/"));
+  const fullPath = getFullPath(relativePath.split("/").splice(1).join("/"));
 
-  const outputFile = `${fullPath}.7z`; // Define o nome de saída como .zip
+  const outputFile = `${fullPath}.7z`;
   try {
     archiveUtils.compressFile(fullPath, outputFile).then(() => {
       res
@@ -297,8 +215,6 @@ app.post("/compress-file", (req, res) => {
       .json({ success: false, message: "Erro ao compactar arquivo." });
   }
 });
-
-// Rota para renomear/mover arquivo
 app.post("/rename-move", (req, res) => {
   const { oldPath: relativeOldPath, newPath: relativeNewPath } = req.body;
   try {
@@ -321,35 +237,25 @@ app.post("/rename-move", (req, res) => {
       .json({ success: false, message: "Erro ao renomear/mover arquivo." });
   }
 });
-// Função recursiva para copiar diretórios e seus conteúdos
 const copyDirectory = (source, destination, callback) => {
   fs.readdir(source, (err, items) => {
     if (err) return callback(err);
-
-    // Verifica se o diretório de destino existe, caso contrário, cria
     fs.mkdir(destination, { recursive: true }, (err) => {
       if (err) return callback(err);
-
-      // Processa cada item no diretório
       let count = items.length;
-      if (count === 0) return callback(null); // Se o diretório estiver vazio, chama o callback
-
+      if (count === 0) return callback(null);
       items.forEach((item) => {
         const sourceItem = path.join(source, item);
         const destinationItem = path.join(destination, item);
-
         fs.stat(sourceItem, (err, stats) => {
           if (err) return callback(err);
-
           if (stats.isDirectory()) {
-            // Se for um diretório, chama recursivamente
             copyDirectory(sourceItem, destinationItem, (err) => {
               if (err) return callback(err);
               count--;
               if (count === 0) callback(null);
             });
           } else {
-            // Se for um arquivo, copia o arquivo
             fs.copyFile(sourceItem, destinationItem, (err) => {
               if (err) return callback(err);
               count--;
@@ -361,8 +267,6 @@ const copyDirectory = (source, destination, callback) => {
     });
   });
 };
-
-// Rota para copiar arquivo ou diretório
 app.post("/copy-file", (req, res) => {
   const { oldPath: relativeOldPath, newPath: relativeNewPath } = req.body;
   try {
@@ -379,7 +283,6 @@ app.post("/copy-file", (req, res) => {
       }
 
       if (stats.isDirectory()) {
-        // Se for diretório, usa a função recursiva para copiar o diretório
         copyDirectory(fullOldPath, fullNewPath, (err) => {
           if (err) {
             console.error(err);
@@ -393,7 +296,6 @@ app.post("/copy-file", (req, res) => {
           });
         });
       } else {
-        // Se for arquivo, usa o fs.copyFile
         fs.copyFile(fullOldPath, fullNewPath, (err) => {
           if (err) {
             console.error(err);
@@ -421,12 +323,8 @@ app.post("/copy-file", (req, res) => {
 app.delete("/delete", (req, res) => {
   const { path: relativePath } = req.body;
   let fullPath = getFullPath(relativePath);
-
-  // Check if the path contains "*" and remove it
   if (relativePath.includes("*")) {
-    fullPath = fullPath.replace("*", ""); // Remove the "*" from the path
-
-    // If it's a directory, delete all contents recursively
+    fullPath = fullPath.replace("*", "");
     fs.readdir(fullPath, (err, files) => {
       if (err) {
         console.error("Error reading directory:", err);
@@ -434,7 +332,6 @@ app.delete("/delete", (req, res) => {
           .status(500)
           .json({ success: false, message: "Erro ao acessar diretório." });
       }
-
       let deletePromises = files.map((file) => {
         const filePath = path.join(fullPath, file);
         return new Promise((resolve, reject) => {
@@ -447,7 +344,6 @@ app.delete("/delete", (req, res) => {
           });
         });
       });
-
       Promise.all(deletePromises)
         .then(() => {
           res.status(200).json({
@@ -460,7 +356,6 @@ app.delete("/delete", (req, res) => {
         });
     });
   } else {
-    // If no "*" in the path, treat it as a single file to delete
     fs.rm(fullPath, { recursive: true, force: true }, (err) => {
       if (err) {
         console.error("Error deleting file:", err);
@@ -474,8 +369,6 @@ app.delete("/delete", (req, res) => {
     });
   }
 });
-
-// Rota para enviar arquivo (upload)
 const upload = multer({ dest: "uploads/" });
 app.post("/upload-file", upload.single("file"), async (req, res) => {
   if (!req.file) {
@@ -494,7 +387,6 @@ app.post("/upload-file", upload.single("file"), async (req, res) => {
     message: `Arquivo ${req.file.originalname} enviado com sucesso.`,
   });
 });
-// Rota para baixar arquivo
 app.get("/download-file", (req, res) => {
   const { path: relativePath } = req.query;
   const fullPath = getFullPath(relativePath);
@@ -513,8 +405,6 @@ app.get("/download-file", (req, res) => {
     }
   });
 });
-
-// Rota para editar conteúdo de um arquivo
 app.post("/edit-file", (req, res) => {
   const { path: relativePath, content } = req.body;
   const fullPath = getFullPath(relativePath);
@@ -536,8 +426,6 @@ app.post("/edit-file", (req, res) => {
       .json({ success: true, message: "Arquivo editado com sucesso." });
   });
 });
-
-// Rota para obter conteúdo de um arquivo e verificar se é binário
 app.post("/get-file-content", (req, res) => {
   const { path: relativePath } = req.body;
   const fullPath = getFullPath(relativePath);
@@ -565,8 +453,6 @@ app.post("/get-file-content", (req, res) => {
     res.status(200).json({ success: true, content: data });
   });
 });
-
-// Função para verificar se o arquivo é binário
 function checkIfBinary(filePath) {
   const buffer = fs.readFileSync(filePath);
   let isBinary = false;
@@ -580,9 +466,6 @@ function checkIfBinary(filePath) {
 
   return isBinary;
 }
-const tempFiles = new Map();
-// Rota para baixar uma pastaconst tempFiles = new Map();
-
 app.get("/download-folder", async (req, res) => {
   const { path: relativePath } = req.query;
   const folderPath = getFullPath(relativePath || "");
@@ -591,45 +474,27 @@ app.get("/download-folder", async (req, res) => {
     "temp",
     `${Date.now()}_folder.7z`
   );
-
-  // Verifica se a pasta existe
   if (!fs.existsSync(folderPath)) {
     return res
       .status(404)
       .json({ success: false, message: "Pasta não encontrada." });
   }
-
   try {
-    // Comprime a pasta usando o archiveUtils
     await archiveUtils.compressFile(folderPath, tempArchivePath);
-
-    // Adiciona o arquivo temporário à lista para exclusão futura
-    tempFiles.set(tempArchivePath, Date.now());
     const name =
       (relativePath
         ? relativePath.includes("/")
           ? relativePath.split("/").slice(1).join("/").replaceAll("/", "-")
           : relativePath
         : "Root ") + " Download.7z";
-    // Envia o arquivo para o cliente
-    logWithTimestamp("[Gerenciador de Arquivos] Arquivo gerado: " + name);
 
     res.download(tempArchivePath, name, (err) => {
-      // Apaga o arquivo temporário após o envio
       fs.unlink(tempArchivePath, (unlinkErr) => {
         if (unlinkErr) {
-          logWithTimestamp(
-            "[Gerenciador de Arquivos] Erro ao apagar arquivo temporário:",
-            unlinkErr.message
-          );
         }
       });
 
       if (err) {
-        logWithTimestamp(
-          "[Gerenciador de Arquivos] Erro ao enviar arquivo:",
-          err.message
-        );
         return res.status(500).json({
           success: false,
           message: "Erro ao baixar pasta.",
@@ -637,61 +502,28 @@ app.get("/download-folder", async (req, res) => {
       }
     });
   } catch (err) {
-    logWithTimestamp(
-      "[Gerenciador de Arquivos] Erro ao comprimir pasta:",
-      err.message
-    );
     res.status(500).json({
       success: false,
       message: "Erro ao comprimir pasta.",
     });
   }
 });
-
-// Limpeza periódica de arquivos temporários
 setInterval(() => {
   const now = Date.now();
-  logWithTimestamp("[Lixeiro] Procurando arquivos antigos...");
-
-  // Altere o diretório para onde seus arquivos estão armazenados
   const dirPath = __dirname + "/temp";
-
   fs.readdir(dirPath, (err, files) => {
     if (err) {
-      logWithTimestamp("[Lixeiro] Erro ao ler o diretório:", err.message);
       return;
     }
-
     files.forEach((file) => {
       const filePath = path.join(dirPath, file);
       const timestamp = parseInt(file.split("_")[0]);
-
       if (!isNaN(timestamp)) {
         const remainingTime = now - timestamp;
-        const maxAge = config.Lixeiro["Idade máxima do arquivo (em minutos)"] * 60 * 1000;
-
-        if (remainingTime < maxAge) {
-          const timeLeft = maxAge - remainingTime;
-          const minutesLeft = Math.floor(timeLeft / 60000);
-          const secondsLeft = Math.floor((timeLeft % 60000) / 1000);
-
-          logWithTimestamp(
-            `[Lixeiro] Tempo restante para apagar o arquivo '${file}': ${minutesLeft}m ${secondsLeft}s`
-          );
-        } else {
-          fs.unlink(filePath, (err) => {
-            if (err) {
-              logWithTimestamp(
-                "[Lixeiro] Erro ao apagar arquivo temporário:",
-                err.message
-              );
-            } else {
-              logWithTimestamp(
-                "[Lixeiro] Arquivo temporário apagado:",
-                filePath
-              );
-            }
-          });
+        const maxAge =
+          config.Lixeiro["Idade máxima do arquivo (em minutos)"] * 60 * 1000
+        if (remainingTime > maxAge) {
+          fs.unlinkSync(filePath);
         }
       }
     });

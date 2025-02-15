@@ -1,5 +1,5 @@
 {
-  "Pasta do servidor": "server",
+  "Pasta do servidor": "~/.temp/server",
   "Lixeiro": {
     "Intervalo de Verificação (limpeza de arquivos antigos)": "10",
     "Idade máxima do arquivo (em minutos)": "10"

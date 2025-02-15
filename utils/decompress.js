@@ -4,8 +4,6 @@ const tar = require("tar");
 const Unrar = require("node-unrar-js");
 const Seven = require("node-7z");
 const fs = require("fs");
-const zlib = require("zlib");
-const archiver = require("archiver");
 
 const magicBytes = {
   Zip: [0x50, 0x4b, 0x03, 0x04],
@@ -43,15 +41,6 @@ const extractFile = async (inputPath, outputPath) => {
     } else if (format === "Tar") {
       await tar.x({ file: inputPath, cwd: outputPath });
       console.log("Arquivo TAR extraído com sucesso!");
-    } else if (format === "Gz") {
-      fs.createReadStream(inputPath)
-        .pipe(zlib.createGunzip())
-        .pipe(
-          fs.createWriteStream(
-            path.join(outputPath, path.basename(inputPath, ".gz"))
-          )
-        );
-      console.log("Arquivo GZ extraído com sucesso!");
     } else if (format === "7-zip") {
       const extractor = Seven.extractFull(inputPath, outputPath, {
         $bin: "7z",
