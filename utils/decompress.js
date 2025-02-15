@@ -29,7 +29,7 @@ const extractFile = async (inputPath, outputPath) => {
   const format = detectFormat(inputPath);
 
   if (!format) {
-    console.error("Formato de arquivo não reconhecido ou não suportado.");
+    console.error("File format is invalid.");
     return;
   }
 
@@ -37,16 +37,16 @@ const extractFile = async (inputPath, outputPath) => {
     if (format === "Zip") {
       const zip = new AdmZip(inputPath);
       zip.extractAllTo(outputPath, true);
-      console.log("Arquivo ZIP extraído com sucesso!");
+      console.log("Zip Extracted!");
     } else if (format === "Tar") {
       await tar.x({ file: inputPath, cwd: outputPath });
-      console.log("Arquivo TAR extraído com sucesso!");
+      console.log("Tar extracted!");
     } else if (format === "7-zip") {
       const extractor = Seven.extractFull(inputPath, outputPath, {
         $bin: "7z",
       });
       extractor.on("end", () =>
-        console.log("Arquivo 7Z extraído com sucesso!")
+        console.log("7Z extracted!")
       );
       extractor.on("error", (err) => console.error("Erro ao extrair 7Z:", err));
     } else if (format === "Rar") {
@@ -62,15 +62,15 @@ const extractFile = async (inputPath, outputPath) => {
             file.fileData
           );
         });
-        console.log("Arquivo RAR extraído com sucesso!");
+        console.log("Rar EXTRACTED!");
       } else {
-        console.error("Erro ao extrair RAR:", extracted[0].state);
+        console.error("Rar FAIL:", extracted[0].state);
       }
     } else {
-      console.error("Formato de arquivo não suportado:", format);
+      console.error("File format not supported:", format);
     }
   } catch (err) {
-    console.error("Erro ao extrair o arquivo:", err);
+    console.error("Error:", err);
   }
 };
 const { promisify } = require("util");
@@ -123,17 +123,17 @@ const compressFile = (inputPath, outputPath) => {
             runCompression(sevenZipPath, inputPath, outputPath)
               .then(() => resolve())
               .catch((err) =>
-                reject(`Erro ao conceder permissão de execução: ${err.message}`)
+                reject(`${err.message}`)
               )
           )
           .catch((err) =>
-            reject(`Erro ao conceder permissão de execução: ${err.message}`)
+            reject(`${err.message}`)
           );
       } else {
         runCompression(sevenZipPath, inputPath, outputPath);
       }
     } else {
-      reject("O caminho especificado não é um arquivo nem uma pasta.");
+      reject("File not found");
     }
   });
 };
@@ -145,10 +145,10 @@ const runCompression = (sevenZipPath, inputPath, outputPath) => {
     exec(command)
       .then(() => {
         resolve(
-          `Arquivo ou diretório compactado com sucesso! Salvo em: ${outputPath}`
+          `File compressed! ${outputPath}`
         );
       })
-      .catch((err) => reject(`Erro ao compactar: ${err.message}`));
+      .catch((err) => reject(`Error compressing: ${err.message}`));
   });
 };
 module.exports = { extractFile, compressFile, isCompressed: detectFormat };
